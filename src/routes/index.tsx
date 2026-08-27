@@ -15,7 +15,7 @@ import {
   Clock,
   ArrowUpRight,
 } from "lucide-react";
-import logoAsset from "@/assets/central-logo.png.asset.json";
+import logoUrl from "@/assets/central-logo.png";
 import heroImg from "@/assets/grafica-hero.jpg";
 
 export const Route = createFileRoute("/")({
@@ -175,7 +175,7 @@ export function CartaoDigital() {
               />
               <div className="animate-logo-shine relative overflow-hidden rounded-[2rem] bg-white px-10 py-7 shadow-glow ring-1 ring-white/60 sm:px-12 sm:py-8">
                 <img
-                  src={logoAsset.url}
+                  src={logoUrl}
                   alt="Central Impressos — logotipo"
                   width={520}
                   height={220}
