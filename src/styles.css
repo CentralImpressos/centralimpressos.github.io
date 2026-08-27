@@ -1,0 +1,292 @@
+@import "tailwindcss";
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Central Impressos — Cartão de visita digital
+ * Paleta: grafite profundo + amarelo da marca.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --font-display: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 1rem;
+  --background: oklch(0.17 0.008 260);
+  --foreground: oklch(0.97 0.005 100);
+  --surface: oklch(0.225 0.01 260);
+  --surface-foreground: oklch(0.97 0.005 100);
+  --card: oklch(0.225 0.01 260);
+  --card-foreground: oklch(0.97 0.005 100);
+  --popover: oklch(0.225 0.01 260);
+  --popover-foreground: oklch(0.97 0.005 100);
+  --primary: oklch(0.855 0.175 92);
+  --primary-foreground: oklch(0.19 0.01 260);
+  --secondary: oklch(0.28 0.012 260);
+  --secondary-foreground: oklch(0.97 0.005 100);
+  --muted: oklch(0.28 0.012 260);
+  --muted-foreground: oklch(0.72 0.012 260);
+  --accent: oklch(0.855 0.175 92);
+  --accent-foreground: oklch(0.19 0.01 260);
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.855 0.175 92);
+
+  --gradient-brand: linear-gradient(
+    135deg,
+    oklch(0.855 0.175 92) 0%,
+    oklch(0.9 0.16 100) 45%,
+    oklch(0.78 0.17 78) 100%
+  );
+  --gradient-surface: linear-gradient(
+    160deg,
+    oklch(0.26 0.012 260) 0%,
+    oklch(0.19 0.008 260) 100%
+  );
+  --shadow-glow: 0 24px 70px -24px oklch(0.855 0.175 92 / 0.45);
+  --shadow-card: 0 30px 80px -40px oklch(0 0 0 / 0.9);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility text-gradient-brand {
+  background-image: var(--gradient-brand);
+  background-clip: text;
+  color: transparent;
+}
+
+@utility bg-gradient-brand {
+  background-image: var(--gradient-brand);
+}
+
+@utility bg-gradient-surface {
+  background-image: var(--gradient-surface);
+}
+
+@utility shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------- Animações ---------- */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.98);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(1.5deg);
+  }
+}
+
+@keyframes aurora {
+  0% {
+    transform: translate3d(-8%, -4%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8%, 6%, 0) scale(1.15);
+  }
+  100% {
+    transform: translate3d(-8%, -4%, 0) scale(1);
+  }
+}
+
+@keyframes sheen {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(240%) skewX(-18deg);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.855 0.175 92 / 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 18px oklch(0.855 0.175 92 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.855 0.175 92 / 0);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@utility animate-rise {
+  animation: rise-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes logo-reveal {
+  0% {
+    opacity: 0;
+    transform: scale(1.12) translateY(10px);
+    filter: blur(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes logo-glow {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes logo-shine {
+  0%,
+  55% {
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+
+@utility animate-logo-reveal {
+  animation: logo-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility animate-logo-glow {
+  animation: logo-glow 6s ease-in-out infinite;
+}
+
+@utility animate-logo-shine {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 45%;
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      oklch(0.95 0.1 95 / 0.75) 50%,
+      transparent 100%
+    );
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    animation: logo-shine 4.5s ease-in-out infinite;
+  }
+}
+
+@utility animate-aurora {
+  animation: aurora 18s ease-in-out infinite;
+}
+
+@utility animate-sheen {
+  animation: sheen 3.6s ease-in-out infinite;
+}
+
+@utility animate-pulse-ring {
+  animation: pulse-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@utility animate-marquee {
+  animation: marquee 60s linear infinite;
+}
+
+@utility card-hover {
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.45s ease,
+    box-shadow 0.45s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
