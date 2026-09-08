@@ -142,7 +142,7 @@ export function createBoxGeometry({ width, height, depth, thickness, preset, joi
   panel('front', 'wall', width, height, [-width / 2, 0, depth / 2 - thickness], [0, 0, 0], fingerEdges(preset === 'lid'));
   panel('back', 'wall', width, height, [-width / 2, 0, -depth / 2], [0, 0, 0], fingerEdges(preset === 'lid'));
   panel('left', 'wall', depth, height, [-width / 2, 0, depth / 2], [0, Math.PI / 2, 0], leftEdges(preset === 'lid'));
-  panel('right', 'wall', depth, height, [width / 2 - thickness, 0, -depth / 2], [0, -Math.PI / 2, 0], rightEdges(preset === 'lid'));
+  panel('right', 'wall', depth, height, [width / 2, 0, -depth / 2], [0, -Math.PI / 2, 0], rightEdges(preset === 'lid'));
 
   if (preset === 'lid') {
     panel('lid', 'lid', width, depth, [-width / 2, height + thickness, -depth / 2], [Math.PI / 2, 0, 0], lidEdges);
