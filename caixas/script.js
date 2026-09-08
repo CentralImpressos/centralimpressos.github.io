@@ -1,13 +1,15 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/environments/RoomEnvironment.js';
+import { BlobWriter, TextReader, ZipWriter } from 'https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.57/+esm';
 import { businessConfig } from './config.js';
 import { createBoxGeometry } from './geometry.js';
 
-let makerjs = globalThis.MakerJs || globalThis.makerjs || globalThis.makerJS;
 let scene;
 let camera;
 let renderer;
 let controls;
+let environmentTarget;
 let current = null;
 let selectedColor = 'black';
 let preset = 'open';
@@ -17,9 +19,9 @@ let cameraViewInitialized = false;
 
 const $ = (id) => document.getElementById(id);
 const colors = {
-  black: { hex: 0x181a1b, edge: 0x4b5052, edgeOpacity: .7, roughness: .14, clearcoat: 1, clearcoatRoughness: .07, opacity: .98 },
-  white: { hex: 0xd9dad6, edge: 0x8c9291, edgeOpacity: .58, roughness: .17, clearcoat: 1, clearcoatRoughness: .09, opacity: .98 },
-  clear: { hex: 0xd8dedb, edge: 0x74807d, edgeOpacity: .48, roughness: .08, transmission: .82, thickness: .8, ior: 1.46, opacity: .58 }
+  black: { hex: 0x020304, edge: 0x697275, edgeOpacity: .36, roughness: .2, clearcoat: .8, clearcoatRoughness: .06, envMapIntensity: .55, opacity: 1 },
+  white: { hex: 0xbfc2bf, edge: 0x646866, edgeOpacity: .62, roughness: .24, clearcoat: 1, clearcoatRoughness: .045, specularIntensity: 1, specularColor: 0xffffff, envMapIntensity: .95, opacity: 1 },
+  clear: { hex: 0xf5f7f6, edge: 0x8a908e, edgeOpacity: .62, roughness: .018, clearcoat: .75, clearcoatRoughness: .035, transmission: .9, ior: 1.46, specularIntensity: 1.25, specularColor: 0xffffff, envMapIntensity: 1.45, opacity: .58 }
 };
 const kerf = businessConfig.kerf;
 
@@ -45,11 +47,15 @@ function init3D() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   host.appendChild(renderer.domElement);
+  const environment = new RoomEnvironment();
+  environmentTarget = new THREE.PMREMGenerator(renderer).fromScene(environment, .04);
+  scene.environment = environmentTarget.texture;
+  environment.dispose();
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.target.set(0, 30, 0);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x59635e, 2.1));
-  const light = new THREE.DirectionalLight(0xffffff, 2);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x59635e, 1.35));
+  const light = new THREE.DirectionalLight(0xffffff, 2.8);
   light.position.set(120, 240, 160);
   scene.add(light);
   resize();
@@ -145,28 +151,17 @@ function getMaterialEstimate(width, height, depth, thickness) {
     area += Math.max(0, getDividerRows() - 1) * (width - 2 * thickness) * dividerHeight;
     area += Math.max(0, getDividerColumns() - 1) * (depth - 2 * thickness) * dividerHeight;
   }
-  const squareMeters = area / 1000000;
-  return { area: squareMeters, value: squareMeters * material.pricePerSquareMeter };
+  const margin = Math.max(0, Number(businessConfig.materialWastePercent) || 0) / 100;
+  const squareMeters = (area / 1000000) * (1 + margin);
+  const materialValue = squareMeters * material.pricePerSquareMeter;
+  const minimumPrice = Math.max(0, Number(businessConfig.minimumPrice) || 0);
+  return { area: squareMeters, value: Math.max(materialValue, minimumPrice) };
 }
 
 function updateEstimate(width, height, depth, thickness) {
   const estimate = getMaterialEstimate(width, height, depth, thickness);
   const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: businessConfig.currency });
   $('estimate').textContent = `Valor estimado: ${formatter.format(estimate.value)} · ${estimate.area.toFixed(3)} m²`;
-}
-
-function loadMakerJs() {
-  if (makerjs) return Promise.resolve(makerjs);
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/makerjs@0.15.0/dist/browser.maker.js';
-    script.onload = () => {
-      makerjs = globalThis.MakerJs || globalThis.makerjs || globalThis.makerJS;
-      makerjs ? resolve(makerjs) : reject(new Error('Maker.js não expôs uma API global.'));
-    };
-    script.onerror = () => reject(new Error('Não foi possível carregar Maker.js.'));
-    document.head.appendChild(script);
-  });
 }
 
 function generateBox() {
@@ -209,11 +204,14 @@ function generateBox() {
     clearcoat: color.clearcoat || 0,
     clearcoatRoughness: color.clearcoatRoughness || .1,
     transmission: color.transmission || 0,
-    thickness: color.thickness || 0,
+    thickness: color.transmission ? thickness : 0,
     ior: color.ior || 1.5,
-    transparent: color.opacity < 1,
+    specularIntensity: color.specularIntensity,
+    specularColor: color.specularColor,
+    envMapIntensity: color.envMapIntensity,
+    transparent: color.transmission ? true : color.opacity < 1,
     opacity: color.opacity,
-    depthWrite: color.opacity >= .9,
+    depthWrite: !color.transmission && color.opacity >= .9,
     side: THREE.DoubleSide,
     polygonOffset: true,
     polygonOffsetFactor: 1,
@@ -243,17 +241,14 @@ function generateBox() {
 
 const layoutGap = 1.2;
 
-async function exportSVG() {
+function svgPath(points, offset) {
+  return points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${(x + offset[0]).toFixed(3)} ${(y + offset[1]).toFixed(3)}`).join(' ') + ' Z';
+}
+
+function buildSVG() {
   if (!current) generateBox();
-  try {
-    await loadMakerJs();
-  } catch (error) {
-    $('message').textContent = 'Maker.js não foi carregado. Verifique a conexão e tente novamente.';
-    return;
-  }
-  if (!current || !makerjs) return;
+  if (!current || !current.geometry) return null;
   const { w, h, d, t } = current;
-  const model = { models: {}, paths: {} };
   const gap = 2 * t + layoutGap;
   const layout = {
     base: [0, 0],
@@ -263,12 +258,9 @@ async function exportSVG() {
     right: [w * 2 + d + gap * 3, d + gap],
     lid: [0, d + h + gap * 2]
   };
-  current.geometry.pieces.forEach((piece) => {
-    if (piece.type === 'divider') return;
-    const [x, y] = layout[piece.name];
-    const outline = new makerjs.models.ConnectTheDots(true, piece.points);
-    makerjs.model.move(outline, [x, y]);
-    model.models[piece.name] = outline;
+  const paths = [];
+  current.geometry.pieces.filter((piece) => piece.type !== 'divider').forEach((piece) => {
+    paths.push(svgPath(piece.points, layout[piece.name]));
   });
   const dividerX = w * 2 + d + gap * 4;
   const rowLayoutGap = gap * 1.5;
@@ -280,18 +272,64 @@ async function exportSVG() {
     const index = isRow ? dividerRowIndex++ : dividerColumnIndex++;
     const x = isRow ? dividerX : dividerX + w + rowLayoutGap;
     const y = d + gap * 3 + index * (dividerHeight + rowLayoutGap);
-    const outline = new makerjs.models.ConnectTheDots(true, piece.points);
-    makerjs.model.move(outline, [x, y]);
-    model.models[piece.name] = outline;
+    paths.push(svgPath(piece.points, [x, y]));
   });
-  const svg = makerjs.exporter.toSVG(model, { stroke: '#000000', strokeWidth: .1, fill: 'none' }).replace(/<svg /, '<svg id="caixa-laser" ');
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const allPoints = current.geometry.pieces.flatMap((piece) => {
+    if (piece.type !== 'divider') {
+      return piece.points.map(([x, y]) => [x + layout[piece.name][0], y + layout[piece.name][1]]);
+    }
+    const isRow = piece.name.startsWith('divider-row');
+    const index = Number(piece.name.split('-').pop()) - 1;
+    const offset = [isRow ? dividerX : dividerX + w + rowLayoutGap, d + gap * 3 + index * (dividerHeight + rowLayoutGap)];
+    return piece.points.map(([x, y]) => [x + offset[0], y + offset[1]]);
+  });
+  const minX = Math.min(...allPoints.map(([x]) => x));
+  const minY = Math.min(...allPoints.map(([, y]) => y));
+  const maxX = Math.max(...allPoints.map(([x]) => x));
+  const maxY = Math.max(...allPoints.map(([, y]) => y));
+  const padding = 2;
+  return `<svg id="caixa-laser" xmlns="http://www.w3.org/2000/svg" viewBox="${(minX - padding).toFixed(3)} ${(minY - padding).toFixed(3)} ${(maxX - minX + padding * 2).toFixed(3)} ${(maxY - minY + padding * 2).toFixed(3)}"><g fill="none" stroke="#000" stroke-width="0.1">${paths.map((path) => `<path d="${path}"/>`).join('')}</g></svg>`;
+}
+
+function buildSummary() {
+  const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: businessConfig.currency });
+  const estimate = getMaterialEstimate(current.w, current.h, current.d, current.t);
+  const materialLabels = { black: 'Preto', white: 'Branco', clear: 'Transparente' };
+  const generatedAt = new Date();
+  return [
+    'Resumo da caixa',
+    '================',
+    `Data/hora: ${generatedAt.toLocaleString('pt-BR')}`,
+    `Formato: ${preset === 'lid' ? 'Com tampa' : 'Aberta'}`,
+    `Dimensões externas: ${current.w} x ${current.d} x ${current.h} mm`,
+    `Área estimada: ${estimate.area.toFixed(3)} m²`,
+    `Espessura: ${current.t} mm`,
+    `Material: Acrílico ${materialLabels[selectedColor] || selectedColor}`,
+    `Junta: ${jointType === 'finger' ? `Com dedos de ${getFingerLength()} mm` : 'Plana'}`,
+    `Divisórias: ${hasDividers ? `${getDividerRows()} linhas x ${getDividerColumns()} colunas` : 'Não'}`,
+    `Valor estimado: ${formatter.format(estimate.value)}`,
+    ''
+  ].join('\n');
+}
+
+async function exportZIP() {
+  if (!current) generateBox();
+  const svg = buildSVG();
+  if (!svg) return;
+  const zipWriter = new ZipWriter(new BlobWriter('application/zip'));
+  const options = { password: businessConfig.zipPassword, encryptionStrength: 3 };
+  await zipWriter.add('Resumo.txt', new TextReader(buildSummary()), options);
+  await zipWriter.add('Corte.svg', new TextReader(svg), options);
+  const zipBlob = await zipWriter.close();
+  const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  const formatName = preset === 'lid' ? 'fechada' : 'aberta';
+  const url = URL.createObjectURL(zipBlob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `caixa-${preset}.svg`;
+  link.download = `Caixa-${formatName}-${date}.zip`;
   link.click();
   URL.revokeObjectURL(url);
-  $('message').textContent = 'SVG planificado exportado com encaixes.';
+  $('message').textContent = 'ZIP protegido exportado com resumo e corte SVG.';
 }
 
 document.querySelectorAll('.preset').forEach((button) => button.addEventListener('click', () => {
@@ -319,7 +357,10 @@ document.querySelectorAll('input[name="joint"]').forEach((input) => input.addEve
 }));
 $('finger-options').hidden = false;
 $('generate').addEventListener('click', generateBox);
-$('export').addEventListener('click', exportSVG);
+$('export').addEventListener('click', () => exportZIP().catch((error) => {
+  console.error(error);
+  $('message').textContent = 'Não foi possível gerar o ZIP protegido.';
+}));
 document.querySelectorAll('input:not([name="joint"]), select').forEach((input) => input.addEventListener('change', () => {
   $('divider-options').hidden = !hasDividers;
   generateBox();
