@@ -113,7 +113,7 @@ function getDividerColumns() {
 
 function getFingerLimit() {
   const dimensions = [+$('width').value, +$('height').value, +$('depth').value].filter((value) => Number.isFinite(value) && value > 0);
-  return dimensions.length ? Math.max(1, Math.floor(Math.min(...dimensions) / 2 * 10) / 10) : 1;
+  return dimensions.length ? Math.max(1, Math.floor(Math.min(...dimensions) * 2 / 3 * 10) / 10) : 1;
 }
 
 function syncFingerLimit() {

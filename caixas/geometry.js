@@ -1,15 +1,29 @@
+function centeredSegmentCount(length, fingerLength) {
+  const count = Math.max(2, Math.floor(length / fingerLength));
+  return count % 2 === 0 ? Math.max(3, count - 1) : count;
+}
+
 function fingerPoints(width, height, thickness, fingerLength, kerf, edges) {
-  const horizontalCount = Math.max(2, Math.floor(width / fingerLength));
-  const verticalCount = Math.max(2, Math.floor(height / fingerLength));
+  const horizontalInset = Math.max(edges.horizontalInset || 0, 0);
+  const horizontalCount = centeredSegmentCount(width - 2 * horizontalInset, fingerLength);
+  const verticalCount = centeredSegmentCount(height, fingerLength);
   const points = [];
-  const addEdge = (start, end, count, outward, mode) => {
-    const stepX = (end[0] - start[0]) / count;
-    const stepY = (end[1] - start[1]) / count;
+  const addEdge = (start, end, count, outward, mode, inset = 0) => {
+    const edgeWidth = end[0] - start[0];
+    const edgeHeight = end[1] - start[1];
+    const edgeLength = Math.hypot(edgeWidth, edgeHeight);
+    const unit = [edgeWidth / edgeLength, edgeHeight / edgeLength];
+    const innerStart = [start[0] + unit[0] * inset, start[1] + unit[1] * inset];
+    const innerEnd = [end[0] - unit[0] * inset, end[1] - unit[1] * inset];
+    const stepX = (innerEnd[0] - innerStart[0]) / count;
+    const stepY = (innerEnd[1] - innerStart[1]) / count;
+    points.push([start[0], start[1]]);
+    if (inset) points.push(innerStart);
     for (let index = 0; index < count; index += 1) {
-      const ax = start[0] + stepX * index;
-      const ay = start[1] + stepY * index;
-      const bx = start[0] + stepX * (index + 1);
-      const by = start[1] + stepY * (index + 1);
+      const ax = innerStart[0] + stepX * index;
+      const ay = innerStart[1] + stepY * index;
+      const bx = innerStart[0] + stepX * (index + 1);
+      const by = innerStart[1] + stepY * (index + 1);
       const isNotch = mode && mode.startsWith('notch') && (mode === 'notch-even' ? index % 2 === 0 : index % 2 === 1);
       const isTab = mode && mode.startsWith('tab') && (mode === 'tab-even' ? index % 2 === 0 : index % 2 === 1);
       const engagement = isNotch ? thickness + kerf / 2 : thickness - kerf / 2;
@@ -21,10 +35,11 @@ function fingerPoints(width, height, thickness, fingerLength, kerf, edges) {
       }
       points.push([bx, by]);
     }
+    if (inset) points.push([end[0], end[1]]);
   };
-  addEdge([0, 0], [width, 0], horizontalCount, [0, -1], edges.bottom);
+  addEdge([0, 0], [width, 0], horizontalCount, [0, -1], edges.bottom, horizontalInset);
   addEdge([width, 0], [width, height], verticalCount, [1, 0], edges.right);
-  addEdge([width, height], [0, height], horizontalCount, [0, 1], edges.top);
+  addEdge([width, height], [0, height], horizontalCount, [0, 1], edges.top, horizontalInset);
   addEdge([0, height], [0, 0], verticalCount, [-1, 0], edges.left);
   return points;
 }
@@ -45,10 +60,6 @@ function edgeMode(kind, parity) {
 
 function mappedParity(parity, count, reversed) {
   return reversed ? (count - 1 + parity) % 2 : parity;
-}
-
-function complementaryParity(parity, count, reversed) {
-  return 1 - mappedParity(parity, count, reversed);
 }
 
 function dividerPoints(width, height, thickness, fingerLength, kerf, slots, slotsFromTop, jointType) {
@@ -92,32 +103,36 @@ export function createBoxGeometry({ width, height, depth, thickness, preset, joi
   const pieces = [];
   const innerWidth = Math.max(thickness, width - 2 * thickness);
   const innerDepth = Math.max(thickness, depth - 2 * thickness);
-  const widthCount = Math.max(2, Math.floor(innerWidth / fingerLength));
-  const heightCount = Math.max(2, Math.floor(height / fingerLength));
-  const frontWallVerticalParity = 0;
-  const backWallVerticalParity = 0;
-  const sideFrontVerticalParity = complementaryParity(frontWallVerticalParity, heightCount, true);
-  const sideBackVerticalParity = complementaryParity(backWallVerticalParity, heightCount, false);
+  const widthCount = centeredSegmentCount(innerWidth, fingerLength);
+  const heightCount = centeredSegmentCount(height, fingerLength);
+  const frontWallVerticalParity = 1;
+  const backWallVerticalParity = 1;
+  const sideFrontDirectParity = mappedParity(frontWallVerticalParity, heightCount, false);
+  const sideFrontReversedParity = mappedParity(frontWallVerticalParity, heightCount, true);
+  const sideBackDirectParity = mappedParity(backWallVerticalParity, heightCount, false);
+  const sideBackReversedParity = mappedParity(backWallVerticalParity, heightCount, true);
   const frontBaseParity = mappedParity(1, widthCount, true);
   const backBaseParity = mappedParity(1, widthCount, false);
   const backLidParity = mappedParity(1, widthCount, true);
   const fingerEdges = (top = false) => ({
     bottom: 'notch-odd',
-    right: edgeMode('notch', frontWallVerticalParity),
+    right: edgeMode('tab', frontWallVerticalParity),
     top: top ? 'notch-odd' : false,
-    left: edgeMode('notch', frontWallVerticalParity)
+    left: edgeMode('tab', frontWallVerticalParity)
   });
   const leftEdges = (top = false) => ({
     bottom: 'notch-odd',
-    right: edgeMode('notch', sideBackVerticalParity),
+    right: edgeMode('notch', sideBackReversedParity),
     top: top ? 'notch-odd' : false,
-    left: edgeMode('notch', sideFrontVerticalParity)
+    left: edgeMode('notch', sideFrontDirectParity),
+    horizontalInset: thickness
   });
   const rightEdges = (top = false) => ({
     bottom: 'notch-odd',
-    right: edgeMode('notch', sideFrontVerticalParity),
+    right: edgeMode('notch', sideFrontReversedParity),
     top: top ? 'notch-odd' : false,
-    left: edgeMode('notch', sideBackVerticalParity)
+    left: edgeMode('notch', sideBackDirectParity),
+    horizontalInset: thickness
   });
   const baseEdges = {
     bottom: edgeMode('tab', backBaseParity),
@@ -143,11 +158,11 @@ export function createBoxGeometry({ width, height, depth, thickness, preset, joi
   panel('base', 'base', innerWidth, innerDepth, [-width / 2 + thickness, thickness, -depth / 2 + thickness], [Math.PI / 2, 0, 0], baseEdges);
   panel('front', 'wall', innerWidth, height, [-width / 2 + thickness, 0, depth / 2 - thickness], [0, 0, 0], fingerEdges(preset === 'lid'));
   panel('back', 'wall', innerWidth, height, [-width / 2 + thickness, 0, -depth / 2], [0, 0, 0], fingerEdges(preset === 'lid'));
-  panel('left', 'wall', innerDepth, height, [-width / 2, 0, depth / 2 - thickness], [0, Math.PI / 2, 0], leftEdges(preset === 'lid'));
-  panel('right', 'wall', innerDepth, height, [width / 2, 0, -depth / 2 + thickness], [0, -Math.PI / 2, 0], rightEdges(preset === 'lid'));
+  panel('left', 'wall', depth, height, [-width / 2, 0, depth / 2], [0, Math.PI / 2, 0], leftEdges(preset === 'lid'));
+  panel('right', 'wall', depth, height, [width / 2, 0, -depth / 2], [0, -Math.PI / 2, 0], rightEdges(preset === 'lid'));
 
   if (preset === 'lid') {
-    panel('lid', 'lid', innerWidth, innerDepth, [-width / 2 + thickness, height + thickness, -depth / 2 + thickness], [Math.PI / 2, 0, 0], lidEdges);
+    panel('lid', 'lid', innerWidth, innerDepth, [-width / 2 + thickness, height, -depth / 2 + thickness], [Math.PI / 2, 0, 0], lidEdges);
   }
 
   if (hasDividers) {
