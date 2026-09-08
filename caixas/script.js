@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/controls/OrbitControls.js';
 import { businessConfig } from './config.js';
+import { createBoxGeometry } from './geometry.js';
 
 let makerjs = globalThis.MakerJs || globalThis.makerjs || globalThis.makerJS;
 let scene;
@@ -75,62 +76,26 @@ function clearScene() {
   while (scene.children.length > 2) scene.remove(scene.children[2]);
 }
 
-function panel(width, height, depth, material, position, rotation) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-  mesh.position.set(...position);
-  if (rotation) mesh.rotation.set(...rotation);
+function createExtrudedPart(piece, material) {
+  const shape = new THREE.Shape();
+  piece.points.forEach(([x, y], index) => {
+    if (index === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  });
+  shape.closePath();
+  const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, {
+    depth: piece.thickness,
+    bevelEnabled: false,
+    curveSegments: 1
+  }), material);
+  mesh.position.set(...piece.position);
+  mesh.rotation.set(...piece.rotation);
   const edgeMaterial = material.userData.edgeMaterial;
   if (edgeMaterial) {
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edgeMaterial);
     mesh.add(edges);
   }
   scene.add(mesh);
-}
-
-function addFingerPreview(width, height, depth, thickness, material) {
-  if (jointType !== 'finger') return;
-  const fingerLength = getFingerLength();
-  const edgeMaterial = material.userData.edgeMaterial;
-  const horizontalCount = Math.max(2, Math.floor(width / fingerLength));
-  const horizontalStep = width / horizontalCount;
-  const depthCount = Math.max(2, Math.floor(depth / fingerLength));
-  const depthStep = depth / depthCount;
-  const seamDepth = .04;
-  const seamHeight = Math.max(.4, thickness * .28);
-  const seamMaterial = edgeMaterial
-    ? new THREE.MeshBasicMaterial({ color: edgeMaterial.color, transparent: true, opacity: edgeMaterial.opacity, depthWrite: false })
-    : material;
-  for (let index = 1; index < horizontalCount - 1; index += 2) {
-    const x = -width / 2 + horizontalStep * (index + .5);
-    panel(horizontalStep - getKerf(), seamHeight, seamDepth, seamMaterial, [x, seamHeight / 2, depth / 2 + seamDepth / 2]);
-    panel(horizontalStep - getKerf(), seamHeight, seamDepth, seamMaterial, [x, seamHeight / 2, -depth / 2 - seamDepth / 2]);
-  }
-  for (let index = 1; index < depthCount - 1; index += 2) {
-    const z = -depth / 2 + depthStep * (index + .5);
-    panel(seamDepth, seamHeight, depthStep - getKerf(), seamMaterial, [width / 2 + seamDepth / 2, seamHeight / 2, z]);
-    panel(seamDepth, seamHeight, depthStep - getKerf(), seamMaterial, [-width / 2 - seamDepth / 2, seamHeight / 2, z]);
-  }
-}
-
-function addLidFingerPreview(width, height, depth, thickness, material) {
-  if (jointType !== 'finger') return;
-  const fingerLength = getFingerLength();
-  const tabDepth = Math.max(.5, thickness * .45);
-  const widthCount = Math.max(2, Math.floor(width / fingerLength));
-  const widthStep = width / widthCount;
-  const depthCount = Math.max(2, Math.floor(depth / fingerLength));
-  const depthStep = depth / depthCount;
-  const clearance = Math.min(getKerf(), widthStep * .08);
-  for (let index = 0; index < widthCount; index += 2) {
-    const x = -width / 2 + widthStep * (index + .5);
-    panel(widthStep - clearance, tabDepth, thickness, material, [x, height - tabDepth / 2, depth / 2 - thickness / 2]);
-    panel(widthStep - clearance, tabDepth, thickness, material, [x, height - tabDepth / 2, -depth / 2 + thickness / 2]);
-  }
-  for (let index = 0; index < depthCount; index += 2) {
-    const z = -depth / 2 + depthStep * (index + .5);
-    panel(thickness, tabDepth, depthStep - clearance, material, [width / 2 - thickness / 2, height - tabDepth / 2, z]);
-    panel(thickness, tabDepth, depthStep - clearance, material, [-width / 2 + thickness / 2, height - tabDepth / 2, z]);
-  }
 }
 
 function pieceCount() {
@@ -222,6 +187,19 @@ function generateBox() {
   };
   current = { ...outer, t: thickness, preset };
   current.kerf = getKerf();
+  current.geometry = createBoxGeometry({
+    width: outer.w,
+    height: outer.h,
+    depth: outer.d,
+    thickness,
+    preset,
+    jointType,
+    fingerLength: getFingerLength(),
+    kerf: getKerf(),
+    hasDividers,
+    dividerRows: getDividerRows(),
+    dividerColumns: getDividerColumns()
+  });
   clearScene();
   const color = colors[selectedColor];
   const material = new THREE.MeshPhysicalMaterial({
@@ -248,29 +226,7 @@ function generateBox() {
     depthTest: true,
     depthWrite: false
   });
-  panel(outer.w, thickness, outer.d, material, [0, thickness / 2, 0]);
-  panel(outer.w, outer.h, thickness, material, [0, outer.h / 2, outer.d / 2 - thickness / 2]);
-  panel(outer.w, outer.h, thickness, material, [0, outer.h / 2, -outer.d / 2 + thickness / 2]);
-  panel(thickness, outer.h, outer.d - 2 * thickness, material, [-outer.w / 2 + thickness / 2, outer.h / 2, 0]);
-  panel(thickness, outer.h, outer.d - 2 * thickness, material, [outer.w / 2 - thickness / 2, outer.h / 2, 0]);
-  addFingerPreview(outer.w, outer.h, outer.d, thickness, material);
-  if (preset === 'lid') {
-    panel(outer.w, thickness, outer.d, material, [0, outer.h + thickness / 2, 0]);
-    addLidFingerPreview(outer.w, outer.h, outer.d, thickness, material);
-  }
-  if (hasDividers) {
-    const rows = getDividerRows();
-    const columns = getDividerColumns();
-    const dividerHeight = preset === 'open' ? outer.h : outer.h - 2 * thickness;
-    for (let index = 1; index < rows; index += 1) {
-      const z = -outer.d / 2 + thickness + (outer.d - 2 * thickness) * index / rows;
-      panel(outer.w - 2 * thickness, dividerHeight, thickness / 2, material, [0, dividerHeight / 2, z]);
-    }
-    for (let index = 1; index < columns; index += 1) {
-      const x = -outer.w / 2 + thickness + (outer.w - 2 * thickness) * index / columns;
-      panel(thickness / 2, dividerHeight, outer.d - 2 * thickness, material, [x, dividerHeight / 2, 0]);
-    }
-  }
+  current.geometry.pieces.forEach((piece) => createExtrudedPart(piece, material));
   if (!cameraViewInitialized) {
     camera.position.set(Math.max(150, outer.w * 1.8), Math.max(130, outer.h * 1.7), Math.max(180, outer.d * 2));
     controls.target.set(0, outer.h / 2, 0);
@@ -283,94 +239,6 @@ function generateBox() {
   updateEstimate(outer.w, outer.h, outer.d, thickness);
   $('status').textContent = 'modelo atualizado';
   $('message').textContent = 'Dimensões externas calculadas com a espessura selecionada.';
-}
-
-function addRect(model, name, x, y, width, height, thickness, edges) {
-  const rect = jointType === 'finger'
-    ? new makerjs.models.ConnectTheDots(true, fingerPoints(width, height, thickness, getFingerLength(), getKerf(), edges))
-    : new makerjs.models.Rectangle(width, height);
-  makerjs.model.move(rect, [x, y]);
-  model.models[name] = rect;
-}
-
-function fingerPoints(width, height, thickness, fingerLength, kerf, edges = { bottom: 'notch-odd', right: 'notch-odd', top: 'notch-odd', left: 'notch-odd' }) {
-  const horizontalCount = Math.max(2, Math.floor(width / fingerLength));
-  const verticalCount = Math.max(2, Math.floor(height / fingerLength));
-  const points = [];
-  const addEdge = (start, end, count, outward, mode) => {
-    const stepX = (end[0] - start[0]) / count;
-    const stepY = (end[1] - start[1]) / count;
-    for (let index = 0; index < count; index += 1) {
-      const ax = start[0] + stepX * index;
-      const ay = start[1] + stepY * index;
-      const bx = start[0] + stepX * (index + 1);
-      const by = start[1] + stepY * (index + 1);
-      const isNotch = mode && mode.startsWith('notch') && (mode === 'notch-even' ? index % 2 === 0 : index % 2 === 1);
-      const isTab = mode && mode.startsWith('tab') && (mode === 'tab-even' ? index % 2 === 0 : index % 2 === 1);
-      const engagement = isNotch ? thickness + kerf / 2 : thickness - kerf / 2;
-      const direction = isTab ? 1 : -1;
-      const normal = [outward[0] * direction * engagement, outward[1] * direction * engagement];
-      points.push([ax, ay]);
-      if ((isNotch || isTab) && index > 0 && index < count - 1) {
-        points.push([ax + normal[0], ay + normal[1]]);
-        points.push([bx + normal[0], by + normal[1]]);
-      }
-      points.push([bx, by]);
-    }
-  };
-  addEdge([0, 0], [width, 0], horizontalCount, [0, -1], edges.bottom);
-  addEdge([width, 0], [width, height], verticalCount, [1, 0], edges.right);
-  addEdge([width, height], [0, height], horizontalCount, [0, 1], edges.top);
-  addEdge([0, height], [0, 0], verticalCount, [-1, 0], edges.left);
-  return points;
-}
-
-function dividerPoints(width, height, thickness, fingerLength, kerf, slots, slotsFromTop) {
-  const points = [];
-  const notchDepth = Math.max(thickness, thickness * 2 - kerf);
-  const notchWidth = Math.min(thickness + kerf, fingerLength * .45);
-  const addNotchedEdge = (fromTop) => {
-    const orderedSlots = slots.slice().sort((a, b) => a - b);
-    if (fromTop) {
-      points.push([0, height]);
-      let cursor = 0;
-      orderedSlots.forEach((slot) => {
-        points.push([slot - notchWidth / 2, height]);
-        points.push([slot - notchWidth / 2, height - notchDepth]);
-        points.push([slot + notchWidth / 2, height - notchDepth]);
-        points.push([slot + notchWidth / 2, height]);
-        cursor = slot + notchWidth / 2;
-      });
-      points.push([width, height]);
-    } else {
-      points.push([width, 0]);
-      orderedSlots.slice().reverse().forEach((slot) => {
-        points.push([slot + notchWidth / 2, 0]);
-        points.push([slot + notchWidth / 2, notchDepth]);
-        points.push([slot - notchWidth / 2, notchDepth]);
-        points.push([slot - notchWidth / 2, 0]);
-      });
-      points.push([0, 0]);
-    }
-  };
-  if (slotsFromTop) {
-    points.push([0, 0], [width, 0], [width, height]);
-    addNotchedEdge(true);
-    points.push([0, height], [0, 0]);
-  } else {
-    points.push([0, 0], [0, height], [width, height]);
-    addNotchedEdge(false);
-    points.push([0, 0]);
-  }
-  return points;
-}
-
-function addDividerPiece(model, name, x, y, width, height, thickness, slots, slotsFromTop) {
-  const piece = jointType === 'finger'
-    ? new makerjs.models.ConnectTheDots(true, dividerPoints(width, height, thickness, getFingerLength(), getKerf(), slots, slotsFromTop))
-    : new makerjs.models.Rectangle(width, height);
-  makerjs.model.move(piece, [x, y]);
-  model.models[name] = piece;
 }
 
 const layoutGap = 1.2;
@@ -387,40 +255,35 @@ async function exportSVG() {
   const { w, h, d, t } = current;
   const model = { models: {}, paths: {} };
   const gap = 2 * t + layoutGap;
-  addRect(model, 'base', 0, 0, w, d, t, { bottom: 'tab-odd', right: 'tab-odd', top: 'tab-odd', left: 'tab-odd' });
-  const frontBackEdges = {
-    bottom: 'notch-odd',
-    right: 'notch-even',
-    top: preset === 'lid' ? 'notch-odd' : false,
-    left: 'notch-even'
+  const layout = {
+    base: [0, 0],
+    front: [0, d + gap],
+    back: [w + gap, d + gap],
+    left: [w * 2 + gap * 2, d + gap],
+    right: [w * 2 + d + gap * 3, d + gap],
+    lid: [0, d + h + gap * 2]
   };
-  const sideEdges = {
-    bottom: 'notch-odd',
-    right: 'notch-odd',
-    top: preset === 'lid' ? 'notch-odd' : false,
-    left: 'notch-odd'
-  };
-  addRect(model, 'front', 0, d + gap, w, h, t, frontBackEdges);
-  addRect(model, 'back', w + gap, d + gap, w, h, t, frontBackEdges);
-  addRect(model, 'left', w * 2 + gap * 2, d + gap, d, h, t, sideEdges);
-  addRect(model, 'right', w * 2 + d + gap * 3, d + gap, d, h, t, sideEdges);
-  if (preset === 'lid') addRect(model, 'lid', 0, d + h + gap * 2, w, d, t, { bottom: 'tab-odd', right: 'tab-odd', top: 'tab-odd', left: 'tab-odd' });
-  if (hasDividers) {
-    const rows = getDividerRows();
-    const columns = getDividerColumns();
-    const rowSlots = Array.from({ length: Math.max(0, columns - 1) }, (_, index) => (w - 2 * t) * (index + 1) / columns);
-    const columnSlots = Array.from({ length: Math.max(0, rows - 1) }, (_, index) => (d - 2 * t) * (index + 1) / rows);
-    const dividerHeight = preset === 'open' ? h : h - 2 * t;
-    const dividerX = w * 2 + d + gap * 4;
-    const rowLayoutGap = gap * 1.5;
-    const columnX = dividerX + w + rowLayoutGap;
-    for (let index = 1; index < rows; index += 1) {
-      addDividerPiece(model, `divider-row-${index}`, dividerX, d + gap * 3 + (index - 1) * (dividerHeight + rowLayoutGap), w - 2 * t, dividerHeight, t, rowSlots, true);
-    }
-    for (let index = 1; index < columns; index += 1) {
-      addDividerPiece(model, `divider-column-${index}`, columnX, d + gap * 3 + (index - 1) * (dividerHeight + rowLayoutGap), d - 2 * t, dividerHeight, t, columnSlots, false);
-    }
-  }
+  current.geometry.pieces.forEach((piece) => {
+    if (piece.type === 'divider') return;
+    const [x, y] = layout[piece.name];
+    const outline = new makerjs.models.ConnectTheDots(true, piece.points);
+    makerjs.model.move(outline, [x, y]);
+    model.models[piece.name] = outline;
+  });
+  const dividerX = w * 2 + d + gap * 4;
+  const rowLayoutGap = gap * 1.5;
+  const dividerHeight = preset === 'open' ? h : h - 2 * t;
+  let dividerRowIndex = 0;
+  let dividerColumnIndex = 0;
+  current.geometry.pieces.filter((piece) => piece.type === 'divider').forEach((piece) => {
+    const isRow = piece.name.startsWith('divider-row');
+    const index = isRow ? dividerRowIndex++ : dividerColumnIndex++;
+    const x = isRow ? dividerX : dividerX + w + rowLayoutGap;
+    const y = d + gap * 3 + index * (dividerHeight + rowLayoutGap);
+    const outline = new makerjs.models.ConnectTheDots(true, piece.points);
+    makerjs.model.move(outline, [x, y]);
+    model.models[piece.name] = outline;
+  });
   const svg = makerjs.exporter.toSVG(model, { stroke: '#000000', strokeWidth: .1, fill: 'none' }).replace(/<svg /, '<svg id="caixa-laser" ');
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   const link = document.createElement('a');
