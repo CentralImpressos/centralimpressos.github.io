@@ -90,7 +90,9 @@ function piece(name, type, points, thickness, position, rotation = [0, 0, 0]) {
 
 export function createBoxGeometry({ width, height, depth, thickness, preset, jointType, fingerLength, kerf, hasDividers, dividerRows, dividerColumns }) {
   const pieces = [];
-  const widthCount = Math.max(2, Math.floor(width / fingerLength));
+  const innerWidth = Math.max(thickness, width - 2 * thickness);
+  const innerDepth = Math.max(thickness, depth - 2 * thickness);
+  const widthCount = Math.max(2, Math.floor(innerWidth / fingerLength));
   const heightCount = Math.max(2, Math.floor(height / fingerLength));
   const frontWallVerticalParity = 0;
   const backWallVerticalParity = 0;
@@ -138,14 +140,14 @@ export function createBoxGeometry({ width, height, depth, thickness, preset, joi
     rotation
   ));
 
-  panel('base', 'base', width, depth, [-width / 2, thickness, -depth / 2], [Math.PI / 2, 0, 0], baseEdges);
-  panel('front', 'wall', width, height, [-width / 2, 0, depth / 2 - thickness], [0, 0, 0], fingerEdges(preset === 'lid'));
-  panel('back', 'wall', width, height, [-width / 2, 0, -depth / 2], [0, 0, 0], fingerEdges(preset === 'lid'));
-  panel('left', 'wall', depth, height, [-width / 2, 0, depth / 2], [0, Math.PI / 2, 0], leftEdges(preset === 'lid'));
-  panel('right', 'wall', depth, height, [width / 2, 0, -depth / 2], [0, -Math.PI / 2, 0], rightEdges(preset === 'lid'));
+  panel('base', 'base', innerWidth, innerDepth, [-width / 2 + thickness, thickness, -depth / 2 + thickness], [Math.PI / 2, 0, 0], baseEdges);
+  panel('front', 'wall', innerWidth, height, [-width / 2 + thickness, 0, depth / 2 - thickness], [0, 0, 0], fingerEdges(preset === 'lid'));
+  panel('back', 'wall', innerWidth, height, [-width / 2 + thickness, 0, -depth / 2], [0, 0, 0], fingerEdges(preset === 'lid'));
+  panel('left', 'wall', innerDepth, height, [-width / 2, 0, depth / 2 - thickness], [0, Math.PI / 2, 0], leftEdges(preset === 'lid'));
+  panel('right', 'wall', innerDepth, height, [width / 2, 0, -depth / 2 + thickness], [0, -Math.PI / 2, 0], rightEdges(preset === 'lid'));
 
   if (preset === 'lid') {
-    panel('lid', 'lid', width, depth, [-width / 2, height + thickness, -depth / 2], [Math.PI / 2, 0, 0], lidEdges);
+    panel('lid', 'lid', innerWidth, innerDepth, [-width / 2 + thickness, height + thickness, -depth / 2 + thickness], [Math.PI / 2, 0, 0], lidEdges);
   }
 
   if (hasDividers) {
